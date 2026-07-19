@@ -84,17 +84,8 @@ def get_llm_router() -> LLMRouter:
 
 
 def _build_client(model: LLMModel) -> LLMClient:
-    """Instantiate the right concrete client for a model."""
-    if model in OPENAI_MODELS:
-        from infrastructure.llm.openai_client import OpenAIClient
-        return OpenAIClient()
-
-    if model in ANTHROPIC_MODELS:
-        from infrastructure.llm.anthropic_client import AnthropicClient
-        return AnthropicClient()
-
-    if model in DATABRICKS_MODELS:
-        from infrastructure.llm.databricks_client import DatabricksModelClient
-        return DatabricksModelClient()
-
-    raise ValueError(f"No client registered for model: {model}")
+    """Instantiate the right concrete client for a model.
+    All tasks route through Databricks Model Serving (JnJ workspace).
+    """
+    from infrastructure.llm.databricks_client import DatabricksModelClient
+    return DatabricksModelClient()
