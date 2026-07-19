@@ -69,13 +69,21 @@ class DocumentAIPipeline:
         """
         Full pipeline from uploaded bytes → ParsedProtocol.
         Called by the Gradio upload handler.
-        """
-        # Step 1: Store to Volume
-        volume_path = self._volume.upload_protocol(filename, content)
-        logger.info("Protocol stored: %s → %s", filename, volume_path)
 
-        # Step 2: Parse document
-        doc = self._doc_parser.parse_from_volume(volume_path)
+        On Databricks (Spark available): writes to Unity Catalog Volume first,
+        then parses via ai_parse_document().
+        Local dev (no Spark): parses directly from bytes — no volume needed.
+        """
+        if self._spark:
+            # Step 1: Store to Volume (Databricks only)
+            volume_path = self._volume.upload_protocol(filename, content)
+            logger.info("Protocol stored: %s → %s", filename, volume_path)
+            doc = self._doc_parser.parse_from_volume(volume_path)
+        else:
+            # Local dev: parse directly from bytes, skip volume entirely
+            logger.info("Local dev — parsing %s directly from bytes", filename)
+            doc = self._doc_parser.parse_from_bytes(content, filename)
+
         if not doc.text:
             logger.error("Document parser returned empty text for: %s", filename)
             return _empty_protocol(filename)
