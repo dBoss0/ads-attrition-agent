@@ -25,6 +25,7 @@ from domain.entities.protocol import ExtractedSection, SectionType
 
 if TYPE_CHECKING:
     from pyspark.sql import SparkSession
+    from infrastructure.llm.router import LLMRouter
 
 logger = logging.getLogger(__name__)
 
@@ -65,23 +66,34 @@ class SectionClassifier:
       (ToC reference) and chunk 15 (actual body), chunk 15 wins.
     """
 
-    def __init__(self, spark: "SparkSession | None" = None) -> None:
+    def __init__(
+        self,
+        spark: "SparkSession | None" = None,
+        router: "LLMRouter | None" = None,
+    ) -> None:
         self._spark = spark
+        self._router = router
 
     def classify(self, chunks: list[str], session_id: str = "tmp") -> list[ExtractedSection]:
         """
         Classify a list of text chunks.
         Returns ExtractedSection objects; only inclusion/exclusion/design/population
         sections are returned (background and other are filtered out).
+
+        Priority:
+          1. Databricks ai_classify() — when Spark + DBR available
+          2. LLM via Databricks serving — when router available (local dev)
+          3. Keyword heuristic — last resort fallback
         """
         if not chunks:
             return []
 
-        classified: list[ClassifiedChunk] = (
-            self._classify_with_ai(chunks, session_id)
-            if self._spark and self._is_databricks()
-            else self._classify_heuristic(chunks)
-        )
+        if self._spark and self._is_databricks():
+            classified = self._classify_with_ai(chunks, session_id)
+        elif self._router:
+            classified = self._classify_with_llm(chunks)
+        else:
+            classified = self._classify_heuristic(chunks)
 
         return self._apply_last_occurrence_rule(classified)
 
@@ -130,6 +142,65 @@ class SectionClassifier:
             )
             for r in rows
         ]
+
+    # ── LLM classification (local dev — no Spark, but router available) ──────────
+
+    def _classify_with_llm(self, chunks: list[str]) -> list[ClassifiedChunk]:
+        """
+        Use Claude via Databricks serving to classify chunks when Spark is absent.
+        Sends all chunks in one request to minimise token cost.
+        """
+        from config.llm_models import LLMTask
+        from domain.ports.llm_port import LLMRequest
+
+        logger.info("Using LLM (Databricks serving) for section classification of %d chunks", len(chunks))
+
+        numbered = "\n\n".join(
+            f"[CHUNK_{i}]\n{chunk[:600]}"
+            for i, chunk in enumerate(chunks)
+        )
+
+        system = (
+            "You are classifying sections of a clinical study protocol document.\n"
+            "For EACH chunk labelled [CHUNK_N], assign exactly ONE label from:\n"
+            "  inclusion_criteria, exclusion_criteria, study_design, "
+            "study_population, background, other\n\n"
+            'Return ONLY a JSON array: [{"chunk_id": 0, "label": "..."}, ...]\n'
+            "One entry per chunk, in the same order. No prose."
+        )
+
+        request = LLMRequest.with_system(
+            system=system,
+            user=f"Classify these protocol chunks:\n\n{numbered}",
+            model="",
+            temperature=0.0,
+            max_tokens=1024,
+            json_mode=True,
+        )
+
+        try:
+            result = self._router.route_json(LLMTask.DOCUMENT_CLASSIFICATION, request)
+            entries = result if isinstance(result, list) else result.get("classifications", [])
+            classified: list[ClassifiedChunk] = []
+            for entry in entries:
+                idx = int(entry.get("chunk_id", 0))
+                label = entry.get("label", "other")
+                if idx < len(chunks):
+                    classified.append(ClassifiedChunk(
+                        chunk_id=idx,
+                        text=chunks[idx],
+                        section_type=label if label in _LABELS else "other",
+                    ))
+            # Fill any missing chunk_ids with "other"
+            classified_ids = {c.chunk_id for c in classified}
+            for i, chunk in enumerate(chunks):
+                if i not in classified_ids:
+                    classified.append(ClassifiedChunk(chunk_id=i, text=chunk, section_type="other"))
+            classified.sort(key=lambda c: c.chunk_id)
+            return classified
+        except Exception as exc:
+            logger.warning("LLM classification failed (%s) — falling back to heuristic", exc)
+            return self._classify_heuristic(chunks)
 
     # ── Heuristic fallback ─────────────────────────────────────────────────────
 

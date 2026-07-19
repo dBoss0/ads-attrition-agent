@@ -52,7 +52,7 @@ class DocumentAIPipeline:
         self._spark = spark
         self._metadata_provider = metadata_provider
         self._doc_parser = DatabricksDocumentParser(spark)
-        self._classifier = SectionClassifier(spark)
+        self._classifier = SectionClassifier(spark, router=router)
         self._extractor = CriteriaExtractor(router, spark)
         self._detector = DataSourceDetector()
         self._volume = VolumeFileStore()
