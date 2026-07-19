@@ -127,21 +127,36 @@ class DataSourceDetector:
     @staticmethod
     def _extract_data_source_section(text: str) -> str:
         """
-        parser.py extract_data_source_section() — finds the 'Data Sources'
-        section and returns just that slice of text.
+        parser.py extract_data_source_section() — finds the Data Sources section.
+        Tries multiple header patterns to handle varied protocol formats.
+        Returns empty string if no section found (caller falls back to full text).
         """
         text_lower = text.lower()
-        start = re.search(r"data sources?", text_lower)
-        if not start:
+
+        # Try multiple header patterns (protocols vary in naming)
+        header_patterns = [
+            r"data sources?",
+            r"databases? used",
+            r"data set",
+            r"study database",
+        ]
+
+        start_idx = None
+        for pattern in header_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                start_idx = match.start()
+                break
+
+        if start_idx is None:
             return ""
 
-        start_idx = start.start()
         end_idx = len(text)
-
-        for pattern in ["study design", "study population", "endpoints", "data analyses"]:
-            match = re.search(pattern, text_lower[start_idx:])
+        for pattern in ["study design", "study population", "endpoints", "data analyses",
+                        "statistical", "inclusion criteria"]:
+            match = re.search(pattern, text_lower[start_idx + 10:])
             if match:
-                end_idx = start_idx + match.start()
+                end_idx = start_idx + 10 + match.start()
                 break
 
         return text[start_idx:end_idx]

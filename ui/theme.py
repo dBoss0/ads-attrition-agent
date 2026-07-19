@@ -115,6 +115,90 @@ body, .gradio-container {{
     color: {TEXT_PRIMARY} !important;
     font-family: {FONT_SANS};
     font-size: {FONT_SIZE_BASE};
+    line-height: 1.6;
+}}
+
+/* ── Remove Gradio branding / footer ─────────────────────────────────── */
+footer {{ display: none !important; }}
+.built-with {{ display: none !important; }}
+.svelte-1kcgrtz {{ display: none !important; }}
+
+/* ── Tighten container padding ──────────────────────────────────────── */
+.gradio-container {{ max-width: 1400px !important; padding: 0 !important; margin: 0 auto !important; }}
+.main {{ padding: 0 24px 24px !important; }}
+
+/* ── Inputs and textareas ────────────────────────────────────────────── */
+input, textarea, select {{
+    font-family: {FONT_SANS} !important;
+    font-size: {FONT_SIZE_BASE} !important;
+    color: {TEXT_PRIMARY} !important;
+    background: {SURFACE_SECONDARY} !important;
+    border: 1px solid {BORDER_DEFAULT} !important;
+    border-radius: {RADIUS_MD} !important;
+    transition: border-color 0.15s !important;
+}}
+input:focus, textarea:focus {{
+    border-color: {ACCENT_BLUE} !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(31,111,235,0.15) !important;
+}}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+button.primary {{
+    background: {ACCENT_BLUE} !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: {RADIUS_MD} !important;
+    font-weight: 600 !important;
+    font-size: {FONT_SIZE_BASE} !important;
+    padding: 10px 20px !important;
+    cursor: pointer !important;
+    transition: background 0.15s, transform 0.1s !important;
+    letter-spacing: 0.01em !important;
+}}
+button.primary:hover {{ background: {ACCENT_BLUE_HOVER} !important; transform: translateY(-1px) !important; }}
+button.primary:active {{ transform: translateY(0) !important; }}
+
+button.secondary {{
+    background: {SURFACE_TERTIARY} !important;
+    color: {TEXT_PRIMARY} !important;
+    border: 1px solid {BORDER_DEFAULT} !important;
+    border-radius: {RADIUS_MD} !important;
+    font-weight: 500 !important;
+    transition: background 0.15s !important;
+}}
+button.secondary:hover {{ background: {SURFACE_SECONDARY} !important; border-color: {ACCENT_BLUE} !important; }}
+
+/* ── Block / card containers ─────────────────────────────────────────── */
+.block, .form {{
+    background: {SURFACE_PRIMARY} !important;
+    border: 1px solid {BORDER_DEFAULT} !important;
+    border-radius: {RADIUS_LG} !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+}}
+
+/* ── Labels ──────────────────────────────────────────────────────────── */
+label span, .block label {{
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    color: {TEXT_SECONDARY} !important;
+    text-transform: uppercase !important;
+}}
+
+/* ── Markdown headings ───────────────────────────────────────────────── */
+.prose h3, .md h3 {{
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: {TEXT_PRIMARY} !important;
+    margin: 16px 0 8px !important;
+    padding-bottom: 6px !important;
+    border-bottom: 1px solid {BORDER_DEFAULT} !important;
+}}
+.prose p, .md p {{
+    color: {TEXT_SECONDARY} !important;
+    font-size: 13px !important;
+    margin: 0 0 8px !important;
 }}
 
 /* ── Header bar ────────────────────────────────────────────────────── */
