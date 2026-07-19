@@ -1,103 +1,147 @@
 """
-Data Source Detector — identifies which Premier data sources a protocol uses.
+Data Source Detector — identifies which data sources a protocol uses.
 
-Preserves parser.py business rules EXACTLY:
-  Rule 2 — Longest-key-first matching (avoids "PHD" matching before "PHD V2.2")
-  Rule 3 — Erase matched key before next search (prevents double-matching)
-  Rule 6 — Run on FULL document text (not per-section)
+Exact replication of parser.py detect_data_source() + extract_data_source_section().
+
+parser.py rules preserved:
+  Rule 2 — Longest-key-first matching
+  Rule 3 — Erase matched key before next search (no double-match)
+  Rule 6 — Run detect on the Data Sources section of the document
   Rule 7 — DATA_SOURCE_MASTER canonical name dictionary
-
-DATA_SOURCE_MASTER maps search strings → canonical Premier data source names.
-Keys are lower-cased for matching; canonical names are Title Case.
 """
 from __future__ import annotations
 
 import re
 
 # ── DATA_SOURCE_MASTER ─────────────────────────────────────────────────────────
-# Rule 7: canonical dictionary. Keys sorted longest-first at runtime (Rule 2).
+# Merged from original parser.py + expanded for Premier project.
+# Keys are lower-cased; sorted longest-first at runtime (Rule 2).
 DATA_SOURCE_MASTER: dict[str, str] = {
-    # Premier specific
-    "premier healthcare database": "Premier Healthcare Database",
-    "pinc ai healthcare database": "Premier Healthcare Database",
-    "pinc ai phd":                 "Premier Healthcare Database",
-    "premier phd":                 "Premier Healthcare Database",
-    "premier":                     "Premier Healthcare Database",
-    "phd v2":                      "Premier Healthcare Database",
-    "phd":                         "Premier Healthcare Database",
+    # Premier
+    "premier healthcare database":      "Premier Healthcare Database",
+    "pinc ai healthcare database":      "Premier Healthcare Database",
+    "pinc ai phd":                      "Premier Healthcare Database",
+    "premier phd":                      "Premier Healthcare Database",
+    "pinc ai":                          "Premier Healthcare Database",
+    "premier":                          "Premier Healthcare Database",
+    "phd v2":                           "Premier Healthcare Database",
+    "phd":                              "Premier Healthcare Database",
 
     # Optum
-    "optum clinformatics":         "Optum Clinformatics Data Mart",
-    "clinformatics":               "Optum Clinformatics Data Mart",
-    "optum ehr":                   "Optum EHR",
-    "optum":                       "Optum",
+    "optum clinformatics date of death": "Optum DOD/SES",
+    "optum clinformatics":              "Optum Clinformatics Data Mart",
+    "clinformatics":                    "Optum Clinformatics Data Mart",
+    "optum ehr":                        "Optum EHR",
+    "optum dod":                        "Optum DOD/SES",
+    "optum ses":                        "Optum DOD/SES",
+    "optum":                            "Optum",
 
-    # Truven / IBM MarketScan
-    "marketscan":                  "IBM MarketScan",
-    "truven":                      "IBM MarketScan",
-    "ibm marketscan":              "IBM MarketScan",
+    # IBM MarketScan / Truven
+    "ibm marketscan":                   "IBM MarketScan",
+    "marketscan":                       "IBM MarketScan",
+    "truven":                           "IBM MarketScan",
+    "ccae":                             "IBM MarketScan",
+    "mdcr":                             "IBM MarketScan",
+    "mdcd":                             "IBM MarketScan",
 
     # Medicare / CMS
-    "medicare claims":             "Medicare Claims (CMS)",
-    "cms":                         "Medicare Claims (CMS)",
-    "medicare":                    "Medicare Claims (CMS)",
-    "medicaid":                    "Medicaid",
+    "medicare claims":                  "Medicare Claims (CMS)",
+    "medicare":                         "Medicare Claims (CMS)",
+    "medicaid":                         "Medicaid",
+    "cms":                              "Medicare Claims (CMS)",
 
-    # EHR / EMR
-    "electronic health record":    "EHR",
-    "electronic medical record":   "EHR",
-    "ehr":                         "EHR",
-    "emr":                         "EHR",
+    # EHR
+    "electronic health record":         "EHR",
+    "electronic medical record":        "EHR",
+    "ehr":                              "EHR",
+    "emr":                              "EHR",
 
-    # Others
-    "flatiron":                    "Flatiron Health",
-    "symphony health":             "Symphony Health",
-    "iqvia":                       "IQVIA",
-    "trinetx":                     "TriNetX",
-    "allscripts":                  "Allscripts",
-    "epic":                        "Epic EHR",
+    # Other databases (from original parser.py)
+    "healthverity":                     "HealthVerity",
+    "concert ai":                       "Concert AI",
+    "flatiron":                         "Flatiron Health",
+    "truveta":                          "Truveta",
+    "komodo":                           "Komodo",
+    "symphony health":                  "Symphony Health",
+    "iqvia":                            "IQVIA",
+    "trinetx":                          "TriNetX",
+    "allscripts":                       "Allscripts",
+    "epic":                             "Epic EHR",
+    "mercy":                            "Mercy",
+    "cprd":                             "CPRD",
+    "hes":                              "HES",
+    "salford":                          "Salford Royal",
+    "jmdc":                             "JMDC",
+    "loopback":                         "Loopback",
+    "integra":                          "Integra",
+    "connect":                          "Connect",
 }
 
 
 class DataSourceDetector:
     """
-    Detects data sources from full protocol text using the DATA_SOURCE_MASTER.
+    Detects data sources from protocol text.
 
-    Follows parser.py rules precisely:
-      - Run on FULL document text (Rule 6)
-      - Longest key first (Rule 2)
-      - Erase matched substring before searching for the next key (Rule 3)
+    Mirrors parser.py exactly:
+      1. extract_data_source_section() — narrow to "Data Sources" section
+      2. Sort keys longest-first (Rule 2)
+      3. Word-boundary regex match per key
+      4. Erase matched text before next search (Rule 3)
+      5. Return unique canonical names
     """
 
     def __init__(self) -> None:
-        # Pre-sort keys longest-first so longer phrases match before substrings
-        # (e.g. "premier healthcare database" before "premier")
         self._sorted_keys: list[str] = sorted(
             DATA_SOURCE_MASTER.keys(), key=len, reverse=True
         )
 
     def detect(self, full_text: str) -> list[str]:
         """
-        Detect all data sources in the full document text.
-        Returns a list of canonical data source names (deduplicated, order of discovery).
-
-        Rule 6: must receive the FULL document text, not a section.
-        Rules 2 & 3: longest-key-first, erase after each match.
+        Detect all data sources. Mirrors parser.py detect_data_source(text).
+        Rule 6: receives full document text; narrows to Data Sources section internally.
         """
         if not full_text:
             return []
 
-        search_text = full_text.lower()
+        # Extract the Data Sources section (original: extract_data_source_section)
+        section = self._extract_data_source_section(full_text)
+        # If no dedicated section found, fall back to searching full text
+        search_text = (section if section else full_text).lower()
+
         found_canonical: list[str] = []
         seen_canonical: set[str] = set()
 
         for key in self._sorted_keys:
-            if key in search_text:
+            # Rule 2+3: word-boundary search, erase on match (original uses \b)
+            pattern = r"\b" + re.escape(key) + r"\b"
+            if re.search(pattern, search_text):
                 canonical = DATA_SOURCE_MASTER[key]
-                # Rule 3: erase the matched key so shorter aliases don't re-match it
-                search_text = search_text.replace(key, " " * len(key), 1)
+                # Rule 3: erase matched key so shorter aliases don't re-match
+                search_text = re.sub(pattern, " " * len(key), search_text)
                 if canonical not in seen_canonical:
                     found_canonical.append(canonical)
                     seen_canonical.add(canonical)
 
         return found_canonical
+
+    @staticmethod
+    def _extract_data_source_section(text: str) -> str:
+        """
+        parser.py extract_data_source_section() — finds the 'Data Sources'
+        section and returns just that slice of text.
+        """
+        text_lower = text.lower()
+        start = re.search(r"data sources?", text_lower)
+        if not start:
+            return ""
+
+        start_idx = start.start()
+        end_idx = len(text)
+
+        for pattern in ["study design", "study population", "endpoints", "data analyses"]:
+            match = re.search(pattern, text_lower[start_idx:])
+            if match:
+                end_idx = start_idx + match.start()
+                break
+
+        return text[start_idx:end_idx]

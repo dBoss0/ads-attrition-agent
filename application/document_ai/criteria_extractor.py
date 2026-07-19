@@ -196,15 +196,49 @@ class CriteriaExtractor:
     @staticmethod
     def _split_heuristic(text: str) -> list[str]:
         """
-        Fallback: split on bullet points, numbered lists, and blank lines.
-        Applies parser.py Rules 5, 8, 9.
+        Original parser.py extract_steps() logic exactly.
+        Splits on newlines, applies all filters from the original implementation.
         """
-        lines = re.split(r"\n|•|–|—|\*|(?<=\n)\s*\d+[\.\)]", text)
+        raw_steps = text.split("\n")
         items: list[str] = []
-        for line in lines:
-            line = _clean_criterion_text(line)
-            if line:
-                items.append(line)
+        for step in raw_steps:
+            step = step.strip()
+            step_lower = step.lower()
+
+            # Min length — same as original (< 15 chars skipped)
+            if len(step) < 15:
+                continue
+
+            # Remove headings
+            if "inclusion criteria" in step_lower:
+                continue
+            if "exclusion criteria" in step_lower:
+                continue
+            if "patients will be included" in step_lower:
+                continue
+            if "patients will be excluded" in step_lower:
+                continue
+            if "table of contents" in step_lower:
+                continue
+
+            # Remove lines starting with certain words (parser.py Rule 9)
+            if (step_lower.startswith("individuals")
+                    or step_lower.startswith("see ")
+                    or step_lower.startswith("product codes")):
+                continue
+
+            # Remove preamble lines (parser.py Rule 8)
+            if "must meet all the following" in step_lower:
+                continue
+            if "meeting any of the following" in step_lower:
+                continue
+
+            # Strip leading numbering (parser.py Rule 5)
+            step = re.sub(r'^\d+\.\s*', '', step).strip()
+
+            if step:
+                items.append(step)
+
         return items
 
     # ── Stage 2: LLM structuring (Claude Opus 4.8) ────────────────────────────

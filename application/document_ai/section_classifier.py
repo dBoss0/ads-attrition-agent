@@ -76,24 +76,19 @@ class SectionClassifier:
 
     def classify(self, chunks: list[str], session_id: str = "tmp") -> list[ExtractedSection]:
         """
-        Classify a list of text chunks.
-        Returns ExtractedSection objects; only inclusion/exclusion/design/population
-        sections are returned (background and other are filtered out).
+        Classify a list of text chunks into protocol sections.
 
         Priority:
-          1. Databricks ai_classify() — when Spark + DBR available
-          2. LLM via Databricks serving — when router available (local dev)
-          3. Keyword heuristic — last resort fallback
+          1. Databricks ai_classify() — when Spark + DBR runtime available
+          2. Marker-based regex (original parser.py logic) — reliable, no AI needed
         """
         if not chunks:
             return []
 
         if self._spark and self._is_databricks():
             classified = self._classify_with_ai(chunks, session_id)
-        elif self._router:
-            classified = self._classify_with_llm(chunks)
         else:
-            classified = self._classify_heuristic(chunks)
+            classified = self._classify_by_markers(chunks)
 
         return self._apply_last_occurrence_rule(classified)
 
@@ -143,99 +138,96 @@ class SectionClassifier:
             for r in rows
         ]
 
-    # ── LLM classification (local dev — no Spark, but router available) ──────────
+    # ── Original parser.py marker logic ───────────────────────────────────────────
 
-    def _classify_with_llm(self, chunks: list[str]) -> list[ClassifiedChunk]:
+    def _classify_by_markers(self, chunks: list[str]) -> list[ClassifiedChunk]:
         """
-        Use Claude via Databricks serving to classify chunks when Spark is absent.
-        Sends all chunks in one request to minimise token cost.
+        Exact replication of parser.py split_criteria_sections() +
+        extract_study_selection().
+
+        Joins all chunks into full text, finds 'inclusion criteria' and
+        'exclusion criteria' text markers, takes the LAST occurrence of each
+        (Rule 1: last-occurrence wins, skips TOC references), then slices the
+        text into inc/exc sections.
         """
-        from config.llm_models import LLMTask
-        from domain.ports.llm_port import LLMRequest
+        full_text = "\n".join(chunks)
+        full_text_lower = full_text.lower()
 
-        logger.info("Using LLM (Databricks serving) for section classification of %d chunks", len(chunks))
+        # Narrow to study section (parser.py: extract_study_selection)
+        start_idx = None
+        for kw in ["study design", "study population", "inclusion criteria"]:
+            match = re.search(kw, full_text_lower)
+            if match:
+                start_idx = match.start()
+                break
 
-        numbered = "\n\n".join(
-            f"[CHUNK_{i}]\n{chunk[:600]}"
-            for i, chunk in enumerate(chunks)
-        )
+        if start_idx is not None:
+            end_idx = len(full_text)
+            for kw in [
+                "exposure variable", "primary independent variable",
+                "covariates", "study outcomes", "product codes",
+            ]:
+                match = re.search(kw, full_text_lower[start_idx:])
+                if match:
+                    end_idx = start_idx + match.start()
+                    break
+            study_text = full_text[start_idx:end_idx]
+        else:
+            study_text = full_text
 
-        system = (
-            "You are classifying sections of a clinical study protocol document.\n"
-            "For EACH chunk labelled [CHUNK_N], assign exactly ONE label from:\n"
-            "  inclusion_criteria, exclusion_criteria, study_design, "
-            "study_population, background, other\n\n"
-            'Return ONLY a JSON array: [{"chunk_id": 0, "label": "..."}, ...]\n'
-            "One entry per chunk, in the same order. No prose."
-        )
+        study_lower = study_text.lower()
 
-        request = LLMRequest.with_system(
-            system=system,
-            user=f"Classify these protocol chunks:\n\n{numbered}",
-            model="",
-            temperature=0.0,
-            max_tokens=1024,
-            json_mode=True,
-        )
+        # Remove table of contents (parser.py: split on "table of contents", keep last)
+        if "table of contents" in study_lower:
+            study_text = study_text.split("table of contents")[-1]
+            study_lower = study_text.lower()
 
-        try:
-            result = self._router.route_json(LLMTask.DOCUMENT_CLASSIFICATION, request)
-            entries = result if isinstance(result, list) else result.get("classifications", [])
-            classified: list[ClassifiedChunk] = []
-            for entry in entries:
-                idx = int(entry.get("chunk_id", 0))
-                label = entry.get("label", "other")
-                if idx < len(chunks):
-                    classified.append(ClassifiedChunk(
-                        chunk_id=idx,
-                        text=chunks[idx],
-                        section_type=label if label in _LABELS else "other",
-                    ))
-            # Fill any missing chunk_ids with "other"
-            classified_ids = {c.chunk_id for c in classified}
-            for i, chunk in enumerate(chunks):
-                if i not in classified_ids:
-                    classified.append(ClassifiedChunk(chunk_id=i, text=chunk, section_type="other"))
-            classified.sort(key=lambda c: c.chunk_id)
-            return classified
-        except Exception as exc:
-            logger.warning("LLM classification failed (%s) — falling back to heuristic", exc)
+        # Find ALL occurrences → take LAST (Rule 1)
+        inc_matches = list(re.finditer(r"inclusion criteria", study_lower))
+        exc_matches = list(re.finditer(r"exclusion criteria", study_lower))
+
+        inc_start = inc_matches[-1].start() if inc_matches else -1
+        exc_start = exc_matches[-1].start() if exc_matches else -1
+
+        result: list[ClassifiedChunk] = []
+        chunk_id = 0
+
+        if inc_start != -1:
+            inc_text = study_text[
+                inc_start: exc_start if exc_start != -1 else len(study_text)
+            ]
+            result.append(ClassifiedChunk(
+                chunk_id=chunk_id,
+                text=inc_text,
+                section_type="inclusion_criteria",
+            ))
+            chunk_id += 1
+
+        if exc_start != -1:
+            exc_text = study_text[exc_start:]
+            result.append(ClassifiedChunk(
+                chunk_id=chunk_id,
+                text=exc_text,
+                section_type="exclusion_criteria",
+            ))
+
+        if not result:
+            logger.warning("No inclusion/exclusion markers found — using keyword fallback")
             return self._classify_heuristic(chunks)
 
-    # ── Heuristic fallback ─────────────────────────────────────────────────────
+        return result
+
+    # ── Keyword fallback (last resort only) ────────────────────────────────────
 
     @staticmethod
     def _classify_heuristic(chunks: list[str]) -> list[ClassifiedChunk]:
-        """
-        Keyword-based classifier for local dev / testing without Databricks.
-        Mirrors what ai_classify is expected to return.
-        """
         result: list[ClassifiedChunk] = []
         for idx, chunk in enumerate(chunks):
             lower = chunk.lower()
-            if any(kw in lower for kw in (
-                "inclusion criteria", "patients will be included",
-                "must meet", "eligible patients", "inclusion:",
-            )):
+            if any(kw in lower for kw in ("inclusion", "eligible patients", "must meet")):
                 label = "inclusion_criteria"
-            elif any(kw in lower for kw in (
-                "exclusion criteria", "patients will be excluded",
-                "excluded if", "exclusion:", "not eligible",
-            )):
+            elif any(kw in lower for kw in ("exclusion", "excluded if", "not eligible")):
                 label = "exclusion_criteria"
-            elif any(kw in lower for kw in (
-                "study design", "study type", "retrospective", "prospective",
-                "cohort", "cross-sectional", "case-control",
-            )):
-                label = "study_design"
-            elif any(kw in lower for kw in (
-                "study population", "target population", "patient population",
-            )):
-                label = "study_population"
-            elif any(kw in lower for kw in (
-                "background", "introduction", "rationale", "objectives",
-            )):
-                label = "background"
             else:
                 label = "other"
             result.append(ClassifiedChunk(chunk_id=idx, text=chunk, section_type=label))
