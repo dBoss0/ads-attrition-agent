@@ -1,0 +1,59 @@
+command:
+  - python
+  - app.py
+
+env:
+  # ── ADS Catalog / Schema ─────────────────────────────────────────────────
+  # Using internal Databricks catalog until client provides their catalog.
+  # When client provides their catalog: change this one line only.
+  - name: ADS_CATALOG
+    value: __databricks_internal_catalog_tiles_arclight_1258026991313256
+  - name: ADS_PREMIER_CATALOG
+    value: rhealth_premier_phg
+  - name: ADS_PREMIER_SCHEMA
+    value: bronze_native_premier_phd
+
+  # ── App Metadata ───────────────────────────────────────────────────────────
+  - name: ADS_LOG_LEVEL
+    value: INFO
+  - name: ADS_APP_VERSION
+    value: "1.0.0"
+
+  # ── LLM API Keys (from Databricks Secrets) ────────────────────────────────
+  # Create secrets via:
+  #   databricks secrets create-scope ads-secrets
+  #   databricks secrets put-secret --scope ads-secrets --key anthropic-api-key
+  #   databricks secrets put-secret --scope ads-secrets --key openai-api-key
+  - name: ADS_ANTHROPIC_API_KEY
+    valueFrom:
+      secretRef:
+        scope: ads-secrets
+        key: anthropic-api-key
+  - name: ADS_OPENAI_API_KEY
+    valueFrom:
+      secretRef:
+        scope: ads-secrets
+        key: openai-api-key
+
+  # ── Volume Paths ──────────────────────────────────────────────────────────
+  - name: ADS_PROTOCOLS_PATH
+    value: /Volumes/__databricks_internal_catalog_tiles_arclight_1258026991313256/pd_70492_5267fb1932774c1d_testing/deepak00/protocols
+  - name: ADS_DATA_DICTIONARY_PATH
+    value: /Volumes/__databricks_internal_catalog_tiles_arclight_1258026991313256/pd_70492_5267fb1932774c1d_testing/deepak00/data_dictionary
+  - name: ADS_EXPORTS_PATH
+    value: /Volumes/__databricks_internal_catalog_tiles_arclight_1258026991313256/pd_70492_5267fb1932774c1d_testing/deepak00/exports
+
+  # ── Databricks Model Serving Endpoints ────────────────────────────────────
+  # You have Claude and GPT endpoints in your JnJ workspace.
+  # Find endpoint names: Databricks UI → Serving → copy the endpoint name exactly.
+  # Example names (update these with your real endpoint names):
+  - name: ADS_LUNA_ENDPOINT
+    value: databricks-claude-opus-4
+  - name: ADS_SOL_ENDPOINT
+    value: databricks-gpt-4o
+
+  # ── AI Search (OPTIONAL — uncomment and set after provisioning endpoint) ───
+  # - name: ADS_AI_SEARCH_ENDPOINT
+  #   value: ""
+  # - name: ADS_AI_SEARCH_INDEX
+  #   value: __databricks_internal_catalog_tiles_arclight_1258026991313256.metadata.columns_index

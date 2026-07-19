@@ -1,0 +1,64 @@
+# Environment — NEVER commit credentials
+.env
+*.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+*.so
+*.dylib
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.virtualenv/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.log
+test-results/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Databricks CLI
+.databricks/
+databricks.yml.local
+
+# Temp / scratch
+tmp/
+scratch/
+*.tmp
+
+# Secrets (extra safety net)
+*secret*
+*credential*
+*password*
+*.pem
+*.key

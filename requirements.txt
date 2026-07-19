@@ -1,0 +1,49 @@
+# ── Web Framework ──────────────────────────────────────────────────────────────
+gradio>=4.40.0
+
+# ── LLM Clients ────────────────────────────────────────────────────────────────
+openai>=1.50.0
+anthropic>=0.34.0
+httpx>=0.27.0
+
+# ── Document Processing ─────────────────────────────────────────────────────────
+python-docx>=1.1.0
+pdfplumber>=0.11.0
+openpyxl>=3.1.0
+# pytesseract>=0.3.10   # Uncomment if scanned PDF support needed
+
+# ── Data ────────────────────────────────────────────────────────────────────────
+pandas>=2.2.0
+pyarrow>=17.0.0
+
+# ── Configuration ───────────────────────────────────────────────────────────────
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+python-dotenv>=1.0.0
+
+# ── Reliability ─────────────────────────────────────────────────────────────────
+tenacity>=9.0.0
+
+# ── Logging ─────────────────────────────────────────────────────────────────────
+loguru>=0.7.0
+
+# ── SQL Validation ──────────────────────────────────────────────────────────────
+sqlglot>=25.0.0
+
+# ── Databricks SDK (for Jobs, Model Serving, Volumes) ──────────────────────────
+databricks-sdk>=0.28.0
+
+# ── Databricks AI Search ────────────────────────────────────────────────────────
+# databricks-ai-search  : AISearchClient for querying (similarity_search)
+# databricks-vectorsearch: VectorSearchClient for index management (create/sync)
+# Both are pre-installed on Databricks Runtime 17.3 LTS.
+# Listed here for local dev / CI environments.
+databricks-ai-search>=0.1.0
+databricks-vectorsearch>=0.40.0
+
+# ── Testing ─────────────────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# NOTE: pyspark, delta-spark are provided by Databricks Runtime 17.3 LTS.
+# Do NOT add them here — they conflict with the runtime versions.
