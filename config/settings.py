@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     app_name: str = Field(default="ADS Automation")
     app_version: str = Field(default="1.0.0")
     log_level: str = Field(default="INFO")
+    # Pre-fills email in local dev so you don't have to type it every time.
+    # On Databricks Apps this is ignored — SSO sets the email automatically.
+    dev_analyst_email: str = Field(default="")
 
     # ── SQL Execution ─────────────────────────────────────────────────────────
     max_sql_retries: int = Field(default=3)

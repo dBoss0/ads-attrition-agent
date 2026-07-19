@@ -79,12 +79,16 @@ def render(
         visible=True,
     )
 
+    # Pre-fill from ADS_DEV_ANALYST_EMAIL when running locally.
+    # On Databricks Apps the SSO event overwrites this anyway.
+    _dev_email = container.settings.dev_analyst_email
+
     with gr.Row():
-        # Populated automatically from SSO header on Databricks Apps.
-        # Editable locally so analysts can type their email during development.
         email_box = gr.Textbox(
             label="Your email",
             placeholder="analyst@company.com (auto-filled on Databricks Apps)",
+            value=_dev_email,
+            interactive=True,
             scale=3,
         )
         create_btn = gr.Button("New Session", variant="primary", scale=1)
